@@ -28,12 +28,12 @@ Please download and unzip the dataset, then place it under the `datasets/` direc
 Directory structure example:
 
 datasets/
- └── CE-CCTSDB/
- ├── images/
- ├── labels/
- ├── train.txt
- ├── val.txt
- └── test.txt
+ └── CE-CCTSDB/ 
+ ├── images/ 
+ ├── labels/ 
+ ├── train.txt 
+ ├── val.txt 
+ └── test.txt 
 
 ## ⚙️ Installation
 ```bash
