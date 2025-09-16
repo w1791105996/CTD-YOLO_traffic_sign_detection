@@ -1,0 +1,14 @@
+# CE-CCTSDB dataset configuration for CTD-YOLO
+
+# Dataset paths
+path: datasets/CE-CCTSDB  # dataset root dir
+train: images/train  # train images (relative to 'path')
+val: images/val  # val images (relative to 'path')
+test: images/test  # test images (relative to 'path')
+
+# Classes
+nc: 58  # number of classes
+names: ['pl5', 'pl10', 'pl15', 'pl20', 'pl25', 'pl30', 'pl40', 'pl50', 'pl60', 'pl70', 'pl80', 'pl100', 'pl120',
+        'pm8', 'pm13', 'pm15', 'pm20', 'pm25', 'pm30', 'pm35', 'pm40', 'pm46', 'pm50', 'pm55', 'pm60', 'pm70', 'pm80',
+        'pn', 'pne', 'ph4', 'ph4.5', 'ph5', 'pl0', 'pl4', 'pl3', 'pm2', 'pm4', 'pm1.5', 'pm10', 'pm5', 'pm3.5',
+        'pnl', 'pr10', 'pr20', 'pr30', 'pr40', 'pr45', 'pr50', 'pr60', 'pr70', 'pr80', 'ps', 'w13', 'w32', 'w55', 'w57', 'w59', 'wo']
