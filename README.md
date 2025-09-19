@@ -26,123 +26,246 @@ CTD-YOLO_traffic_sign_detection/
 │       └── hyp.scratch-low.yaml    # Training hyperparameters
 ├── models/
 │   ├── common.py                   # Basic modules (Conv, C2f, SPPF, etc.)
-│   ├── ctd_yolo.py                # Main CTD-YOLO model
-│   ├── ctd_yolo_config.yaml       # Model architecture config
-│   ├── edcn.py                    # E-DCN implementation
-│   ├── losses.py                  # WIOU loss functions
-│   └── maa.py                     # MAA mechanism
-├── train.py                       # Training script
-├── val.py                         # Validation script
-├── detect.py                      # Inference script
-├── utils.py                       # Utility functions
-├── requirements.txt               # Dependencies
-└── README.md
-```
 
-## 📂 Dataset
-The model is designed for the **CE-CCTSDB dataset** (58 traffic sign classes):
+- **CDM**: Classification Denoising Module for preprocessing
+  - Challenge Classifier (0.25M parameters, based on FastestDet)
+  - Denoising Blocks for rain, snow, fog, blur conditions
+- **Backbone**: Enhanced with DCNv3 deformable convolutions
+- **Neck**: Improved feature pyramid network
+- **Head**: Optimized detection head with WIOU v3 loss
+- **EMA**: Model weight averaging for better convergence
 
-- 📥 Download: [Baidu Pan](https://pan.baidu.com/s/1gie-eZPECoKpBxGd1vCmyQ?pwd=tu5n)  
-- Password: `tu5n`
+## CDM (Classification Denoising Module)
 
-**Dataset Setup:**
-```
-datasets/
-└── CE-CCTSDB/
-    ├── images/
-    │   ├── train/
-    │   ├── val/
-    │   └── test/
-    ├── labels/
-    │   ├── train/
-    │   ├── val/
-    │   └── test/
-    ├── train.txt
-    ├── val.txt
-    └── test.txt
-```
+CDM is an innovative preprocessing module that contains two main components:
 
-## ⚙️ Installation
+### 1. Challenge Classifier
+- **Architecture**: Lightweight network based on FastestDet
+- **Parameters**: Approximately 0.25M parameters
+- **Function**: Identify image degradation types (rain, snow, fog, blur, normal)
+- **Training**: Uses Adam optimizer with learning rate 0.001 and ReduceLROnPlateau scheduling
+
+### 2. Denoising Blocks
+- **Rain Denoising**: Improved version based on multi-scale collaborative method
+- **Snow Denoising**: Based on hierarchical dual-tree complex wavelet representation
+- **Fog Denoising**: U-Net based multi-scale defogging network with Strengthen-Operate-Subtract structure
+- **Blur Denoising**: Based on self-supervised meta-assisted learning method
+- **Normal Processing**: Direct pass-through without processing
+
+## Performance Optimizations
+
+### Training Strategy
+- **Optimizer**: Adam with initial learning rate 0.001
+- **Batch Size**: 32 (optimized for memory efficiency)
+- **Epochs**: 200 (increased from standard 100)
+- **Learning Rate Scheduler**: ReduceLROnPlateau (patience=3, factor=0.5)
+
+### Loss Function
+- **WIOU v3**: Advanced IoU loss with optimized parameters (α=1.9, δ=3)
+- **Multi-scale training**: Enhanced for various input resolutions
+
+### Data Processing
+- **CDM preprocessing**: Automatic challenge classification and denoising
+- **High-resolution support**: Automatic downsampling for 2048×2048 and 1024×768 images
+- **Enhanced augmentation**: HSV color space transformations for weather adaptation
+- **On-the-fly processing**: Dynamic data augmentation during training
+
+## Installation
+
 ```bash
-# Clone repository
-git clone https://github.com/your-username/CTD-YOLO_traffic_sign_detection.git
+# Clone the repository
+git clone <repository-url>
 cd CTD-YOLO_traffic_sign_detection
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-## 🏃 Usage
+## Usage
 
-### Training
+### CDM Training
+
+First train the CDM classifier:
+
 ```bash
-# Basic training
-python train.py --data data/ce-cctsdb.yaml --img 640 --batch 16 --epochs 100
+# Create challenge classification dataset directory structure
+python utils_cdm.py
 
-# Training with MAA
-python train.py --data data/ce-cctsdb.yaml --img 640 --batch 16 --epochs 100 --maa
-
-# Custom hyperparameters
-python train.py --data data/ce-cctsdb.yaml --hyp data/hyps/hyp.scratch-low.yaml --img 640 --batch 16 --epochs 100 --maa
+# Train CDM classifier
+python train_cdm.py --data-dir data/challenge_classification --epochs 100 --batch-size 32
 ```
 
-### Validation
+### CTD-YOLO Training
+
 ```bash
-python val.py --data data/ce-cctsdb.yaml --weights runs/train/exp/weights/best.pt --img 640
+# Training with CDM
+python train.py --data data/ce-cctsdb.yaml --cfg models/ctd_yolo_config.yaml --epochs 200 --batch-size 32 --use-cdm --cdm-weights runs/train_cdm/exp/weights/best_cdm.pt
+
+# Basic training without CDM
+python train.py --data data/ce-cctsdb.yaml --cfg models/ctd_yolo_config.yaml --epochs 200 --batch-size 32
 ```
 
 ### Inference
+
 ```bash
-# Single image
-python detect.py --weights runs/train/exp/weights/best.pt --source path/to/image.jpg
+# Inference with CDM
+python detect.py --weights runs/train/exp/weights/best.pt --source data/images --use-cdm --cdm-weights runs/train_cdm/exp/weights/best_cdm.pt
 
-# Directory of images
-python detect.py --weights runs/train/exp/weights/best.pt --source path/to/images/
+# Basic inference
+python detect.py --weights runs/train/exp/weights/best.pt --source data/images
 
-# Video
-python detect.py --weights runs/train/exp/weights/best.pt --source path/to/video.mp4
-
-# Webcam
-python detect.py --weights runs/train/exp/weights/best.pt --source 0
+# Video inference
+python detect.py --weights runs/train/exp/weights/best.pt --source path/to/video.mp4 --use-cdm --cdm-weights runs/train_cdm/exp/weights/best_cdm.pt
 ```
 
-## 🔧 Model Architecture
+### CDM Demo
 
-### Core Components
-- **Backbone**: YOLOv8 with E-DCN integration
-- **Neck**: Enhanced feature pyramid with multi-scale fusion
-- **Head**: Detection head with WIOU loss
-- **Training**: MAA-stabilized optimization
+```bash
+# Generate CDM demo script
+python utils_cdm.py
 
-### Key Parameters
-- **Input Size**: 640×640 (configurable)
-- **Classes**: 58 (CE-CCTSDB traffic signs)
-- **Anchors**: 3 scales × 3 aspect ratios
-- **Loss**: WIOU + Classification + Objectness
+# Run CDM demo
+python demo_cdm.py --image path/to/test/image.jpg --weights runs/train_cdm/exp/weights/best_cdm.pt
+```
 
-## 📊 Performance Features
-- **WIOU Loss**: Improved bounding box regression with distance weighting
-- **MAA Mechanism**: Exponential moving average for model stability (τ=2000, decay=0.9999)
-- **E-DCN**: Deformable convolution with 4 groups for adaptive feature extraction
-- **Multi-scale Training**: Dynamic image scaling (0.5-1.5×)
+### Validation
 
-## 🛠️ Configuration
-Key configuration files:
-- `models/ctd_yolo_config.yaml`: Model architecture
-- `data/hyps/hyp.scratch-low.yaml`: Training hyperparameters
-- `data/ce-cctsdb.yaml`: Dataset configuration
+```bash
+# Validate model performance
+python val.py --weights runs/train/exp/weights/best.pt --data data/ce-cctsdb.yaml --use-cdm --cdm-weights runs/train_cdm/exp/weights/best_cdm.pt
+```
 
-## 📈 Training Tips
-1. Use `--maa` flag for better model stability
-2. Adjust batch size based on GPU memory
-3. Monitor validation mAP for early stopping
-4. Use multi-scale training for better generalization
+## Dataset
 
-## 🔍 Troubleshooting
-- Ensure dataset path is correct in `data/ce-cctsdb.yaml`
-- Check CUDA compatibility for GPU training
-- Verify all dependencies are installed correctly
-- Use smaller batch size if encountering OOM errors
+### Traffic Sign Detection Dataset
+The model uses the CE-CCTSDB (Chinese Traffic Sign Detection Benchmark) dataset:
 
----
-For questions or issues, please open an issue in this repository.
+- **Training images**: High-resolution traffic sign images in various weather conditions
+- **Annotations**: YOLO format bounding box annotations
+- **Classes**: 58 different traffic sign categories
+
+### CDM Challenge Classification Dataset
+CDM requires an additional challenge classification dataset:
+
+```
+data/challenge_classification/
+├── train/
+│   ├── rain/       # Rainy images
+│   ├── snow/       # Snowy images
+│   ├── fog/        # Foggy images
+│   ├── blur/       # Blurred images
+│   └── normal/     # Normal images
+├── val/
+└── test/
+```
+
+### Dataset Structure
+```
+data/
+├── ce-cctsdb.yaml              # Detection dataset configuration
+├── cdm_config.yaml             # CDM configuration file
+├── challenge_classification/   # CDM training data
+├── images/
+│   ├── train/                  # Training images
+│   ├── val/                    # Validation images
+│   └── test/                   # Test images
+└── labels/
+    ├── train/                  # Training labels
+    ├── val/                    # Validation labels
+    └── test/                   # Test labels
+```
+
+## Configuration Files
+
+### Model Configuration
+- `models/ctd_yolo_config.yaml`: Model architecture configuration
+- `data/hyps/hyp.scratch-low.yaml`: Hyperparameter configuration
+- `data/cdm_config.yaml`: CDM module configuration
+
+### CDM Configuration
+```yaml
+# Challenge Classifier configuration
+classifier:
+  input_size: 224
+  num_classes: 5
+  dropout: 0.2
+
+# Training configuration
+training:
+  batch_size: 32
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 1e-4
+```
+
+### Key Hyperparameters
+```yaml
+lr0: 0.001                  # Initial learning rate
+momentum: 0.9               # Momentum for optimizer
+weight_decay: 0.0005        # Weight decay
+warmup_epochs: 3.0          # Warmup epochs
+box: 0.05                   # Box loss gain
+cls: 0.5                    # Class loss gain
+obj: 1.0                    # Object loss gain
+```
+
+## Results
+
+The CTD-YOLO model with CDM demonstrates significant improvements:
+
+- **CDM Preprocessing**: Significantly improves image quality in complex environments
+- **Enhanced accuracy** in complex weather conditions
+- **Improved robustness** to motion blur and lighting variations
+- **Better generalization** across different traffic sign types
+- **Optimized inference speed** for real-time applications
+
+## Model Components
+
+### 1. CDM (Classification Denoising Module)
+New preprocessing module that includes:
+- Challenge Classifier: Lightweight challenge classifier (0.25M parameters)
+- Denoising Blocks: Denoising modules for different degradation types
+
+### 2. EMA Mechanism
+Exponential Moving Average of model weights for improved training stability and better convergence.
+
+### 3. WIOU v3 Loss
+Advanced IoU-based loss function with:
+- Optimized gradient flow
+- Better handling of small objects
+- Improved localization accuracy
+
+### 4. DCNv3 Integration
+Deformable convolutions for:
+- Adaptive receptive fields
+- Enhanced feature extraction
+- Better handling of irregular shapes
+
+## File Structure
+
+```
+CTD-YOLO_traffic_sign_detection/
+├── models/
+│   ├── cdm.py                  # CDM module implementation
+│   ├── ctd_yolo.py            # Main model
+│   ├── common.py              # Common components
+│   ├── losses.py              # Loss functions
+│   ├── maa.py                 # MAA mechanism
+│   └── edcn.py                # DCNv3 implementation
+���── data/
+│   ├── cdm_config.yaml        # CDM configuration
+│   └── hyps/
+├── train_cdm.py               # CDM training script
+├── utils_cdm.py               # CDM utility functions
+├── train.py                   # Main training script
+├── detect.py                  # Detection script
+├── val.py                     # Validation script
+└── README.md
+```
+
+
+## Acknowledgments
+
+- CE-CCTSDB dataset contributors
+- FastestDet for lightweight classifier design
+- Research community for continuous improvements or issues, please open an issue in this repository.

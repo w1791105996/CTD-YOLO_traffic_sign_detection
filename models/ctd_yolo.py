@@ -7,6 +7,7 @@ import torch.nn as nn
 from .common import Conv, C2f, SPPF, Detect, Concat
 from .edcn import EDCN_Conv
 from .maa import ModelMAA
+from .cdm import CDM
 
 
 class CTD_YOLO(nn.Module):
@@ -17,7 +18,7 @@ class CTD_YOLO(nn.Module):
     3. E-DCN deformable convolutions
     """
     
-    def __init__(self, cfg=None, ch=3, nc=None, anchors=None):
+    def __init__(self, cfg=None, ch=3, nc=None, anchors=None, use_cdm=True):
         super().__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
@@ -33,6 +34,11 @@ class CTD_YOLO(nn.Module):
             self.yaml['nc'] = nc  # override yaml value
         if anchors:
             self.yaml['anchors'] = round(anchors)  # override yaml value
+        
+        # CDM preprocessing module
+        self.use_cdm = use_cdm
+        if self.use_cdm:
+            self.cdm = CDM(classifier_input_size=224, enable_training=True)
         
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
@@ -55,6 +61,10 @@ class CTD_YOLO(nn.Module):
         self.info()
 
     def forward(self, x, augment=False, profile=False, visualize=False):
+        # CDM preprocessing
+        if self.use_cdm and hasattr(self, 'cdm'):
+            x = self.cdm(x)
+        
         if augment:
             return self._forward_augment(x)  # augmented inference, None
         return self._forward_once(x, profile, visualize)  # single-scale inference, train

@@ -62,7 +62,15 @@ def train(opt):
         model.load_state_dict(csd, strict=False)
         print(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')
     else:
-        model = CTD_YOLO(opt.cfg, ch=3, nc=opt.nc, anchors=hyp.get('anchors')).to(device)
+        model = CTD_YOLO(opt.cfg, ch=3, nc=opt.nc, anchors=hyp.get('anchors'), use_cdm=opt.use_cdm).to(device)
+    
+    # Load CDM pretrained weights
+    if opt.use_cdm and opt.cdm_weights and Path(opt.cdm_weights).exists():
+        print(f'Loading CDM weights from {opt.cdm_weights}')
+        cdm_ckpt = torch.load(opt.cdm_weights, map_location='cpu')
+        if hasattr(model, 'cdm'):
+            model.cdm.load_state_dict(cdm_ckpt['model_state_dict'], strict=False)
+            print('CDM weights loaded successfully')
 
     # Freeze layers
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]
@@ -83,37 +91,32 @@ def train(opt):
 
     # Optimizer
     nbs = 64  # nominal batch size
-    accumulate = max(round(nbs / batch_size), 1)
-    hyp['weight_decay'] *= batch_size * accumulate / nbs
+    accumulate = max(round(nbs / batch_size), 1)  # accumulate loss before optimizing
+    hyp['weight_decay'] *= batch_size * accumulate / nbs  # scale weight_decay
     
-    g = [], [], []  # optimizer parameter groups
-    bn = tuple(v for k, v in nn.__dict__.items() if 'Norm' in k)
-    for v in model.modules():
+    pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
+    for k, v in model.named_modules():
         if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):
-            g[2].append(v.bias)
-        if isinstance(v, bn):
-            g[1].append(v.weight)
+            pg2.append(v.bias)  # biases
+        if isinstance(v, nn.BatchNorm2d):
+            pg0.append(v.weight)  # no decay
         elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):
-            g[0].append(v.weight)
+            pg1.append(v.weight)  # apply decay
 
-    if opt.optimizer == 'Adam':
-        optimizer = optim.Adam(g[2], lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))
-    elif opt.optimizer == 'AdamW':
-        optimizer = optim.AdamW(g[2], lr=hyp['lr0'], betas=(hyp['momentum'], 0.999), weight_decay=0.0)
-    else:
-        optimizer = optim.SGD(g[2], lr=hyp['lr0'], momentum=hyp['momentum'], nesterov=True)
-
-    optimizer.add_param_group({'params': g[0], 'weight_decay': hyp['weight_decay']})
-    optimizer.add_param_group({'params': g[1], 'weight_decay': 0.0})
-    print(f"{colorstr('optimizer:')} {type(optimizer).__name__} with parameter groups "
-          f"{len(g[1])} weight (no decay), {len(g[0])} weight, {len(g[2])} bias")
-
-    # Scheduler
-    if opt.cos_lr:
-        lf = one_cycle(1, hyp['lrf'], epochs)
-    else:
-        lf = lambda x: (1 - x / epochs) * (1.0 - hyp['lrf']) + hyp['lrf']
-    scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
+    # Use Adam optimizer as specified in requirements
+    optimizer = optim.Adam(pg0, lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))
+    optimizer.add_param_group({'params': pg1, 'weight_decay': hyp['weight_decay']})  # add pg1 with weight_decay
+    optimizer.add_param_group({'params': pg2})  # add pg2 (biases)
+    
+    # Scheduler - Reduce on Plateau strategy
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 
+        mode='max',  # maximize validation mAP
+        factor=hyp.get('reduce_lr_factor', 0.5),
+        patience=hyp.get('reduce_lr_patience', 3),
+        min_lr=hyp.get('min_lr', 1e-6),
+        verbose=True
+    )
 
     # MAA
     maa = ModelMAA(model) if opt.maa else None
@@ -227,19 +230,15 @@ def train(opt):
                 scaler.step(optimizer)  # optimizer.step
                 scaler.update()
                 optimizer.zero_grad()
-                if maa:
-                    maa.update(model)
                 last_opt_step = ni
+            if maa:
+                maa.update(model)
 
             # Log
             mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
             mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
             pbar.set_description(('%11s' * 2 + '%11.4g' * 5) %
                                (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
-
-        # Scheduler
-        lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
-        scheduler.step()
 
         # Validation
         if opt.val:
@@ -258,6 +257,13 @@ def train(opt):
         stop = stopper(epoch=epoch, fitness=fi)  # early stop check
         if fi > best_fitness:
             best_fitness = fi
+
+        # Scheduler - step with validation metric for ReduceLROnPlateau
+        lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
+        if opt.val:
+            scheduler.step(fi)  # step with fitness metric
+        else:
+            scheduler.step(0)  # step with dummy metric if no validation
 
         # Save model
         if (not opt.nosave) or (epoch == epochs - 1):  # if save
@@ -325,6 +331,8 @@ def parse_opt(known=False):
     parser.add_argument('--maa', action='store_true', help='use MAA')
     parser.add_argument('--val', action='store_true', help='validate during training')
     parser.add_argument('--nc', type=int, default=58, help='number of classes')
+    parser.add_argument('--use-cdm', action='store_true', help='use CDM preprocessing')
+    parser.add_argument('--cdm-weights', type=str, default='', help='CDM pretrained weights path')
 
     return parser.parse_known_args()[0] if known else parser.parse_args()
 

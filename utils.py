@@ -220,6 +220,58 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=3):
         cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
 
 
+def downsample_high_res_image(image, target_size=512, max_original_size=1024):
+    """
+    Downsample high-resolution images to target size for computational efficiency.
+    
+    Args:
+        image: Input image (numpy array)
+        target_size: Target size for downsampling (default: 512)
+        max_original_size: Threshold above which images are considered high-res (default: 1024)
+    
+    Returns:
+        Downsampled image and scale factor
+    """
+    h, w = image.shape[:2]
+    max_dim = max(h, w)
+    
+    # Only downsample if image is larger than threshold
+    if max_dim > max_original_size:
+        # Calculate scale factor to downsample to target size
+        scale_factor = target_size / max_dim
+        new_h = int(h * scale_factor)
+        new_w = int(w * scale_factor)
+        
+        # Resize image
+        downsampled = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        return downsampled, scale_factor
+    else:
+        return image, 1.0
+
+
+def preprocess_traffic_sign_image(image_path, target_size=512):
+    """
+    Preprocess traffic sign images for CTD-YOLO training/inference.
+    Handles high-resolution images from TT-100K and CE-CCTSDB datasets.
+    
+    Args:
+        image_path: Path to input image
+        target_size: Target size for processing (default: 512)
+    
+    Returns:
+        Preprocessed image and scale factor
+    """
+    # Load image
+    image = cv2.imread(image_path)
+    if image is None:
+        raise ValueError(f"Could not load image from {image_path}")
+    
+    # Downsample high-resolution images for efficiency
+    processed_image, scale_factor = downsample_high_res_image(image, target_size)
+    
+    return processed_image, scale_factor
+
+
 # Import required modules
 import re
 import glob

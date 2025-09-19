@@ -9,14 +9,17 @@ import math
 
 class WIOULoss(nn.Module):
     """
-    Wise IoU Loss implementation
+    Wise IoU Loss implementation with v3 support
     Paper: https://arxiv.org/abs/2301.10051
     """
-    def __init__(self, monotonous=False, inner_iou=False, focaler_gamma=0.0):
+    def __init__(self, version=3, monotonous=False, inner_iou=False, focaler_gamma=0.0, alpha=1.9, delta=3):
         super().__init__()
+        self.version = version
         self.monotonous = monotonous
         self.inner_iou = inner_iou
         self.focaler_gamma = focaler_gamma
+        self.alpha = alpha  # WIoU v3 alpha parameter
+        self.delta = delta  # WIoU v3 delta parameter
 
     def forward(self, pred, target, anchor_points=None, mask_gt=None):
         """
@@ -64,13 +67,18 @@ class WIOULoss(nn.Module):
             distance_weight = torch.exp(-normalized_distance)
             alpha = alpha * distance_weight
 
-        # Calculate WIOU loss
-        if self.inner_iou:
-            # Use inner IoU for better convergence
-            inner_iou = self._calculate_inner_iou(pred, target)
-            loss = alpha * (1 - inner_iou)
+        # Calculate WIOU loss based on version
+        if self.version == 3:
+            # WIoU v3 implementation with optimized parameters
+            loss = self._calculate_wiou_v3(pred, target, iou, alpha)
         else:
-            loss = alpha * (1 - iou)
+            # Original WIoU implementation
+            if self.inner_iou:
+                # Use inner IoU for better convergence
+                inner_iou = self._calculate_inner_iou(pred, target)
+                loss = alpha * (1 - inner_iou)
+            else:
+                loss = alpha * (1 - iou)
 
         # Apply focaler if specified
         if self.focaler_gamma > 0:
@@ -95,6 +103,30 @@ class WIOULoss(nn.Module):
         inner_iou = inter / (min_area + 1e-7)
         
         return inner_iou
+
+    def _calculate_wiou_v3(self, pred, target, iou, alpha):
+        """
+        Calculate WIoU v3 loss with optimized parameters
+        """
+        # Calculate aspect ratio penalty
+        pred_wh = pred[:, 2:] - pred[:, :2]
+        target_wh = target[:, 2:] - target[:, :2]
+        
+        # Aspect ratio difference
+        w_ratio = pred_wh[:, 0] / (target_wh[:, 0] + 1e-7)
+        h_ratio = pred_wh[:, 1] / (target_wh[:, 1] + 1e-7)
+        
+        # WIoU v3 penalty term
+        penalty = torch.exp(-self.alpha * torch.abs(w_ratio - 1)) + \
+                 torch.exp(-self.alpha * torch.abs(h_ratio - 1))
+        
+        # Scale factor based on IoU
+        scale_factor = torch.pow(1 - iou, self.delta)
+        
+        # Final WIoU v3 loss
+        loss = alpha * (1 - iou) * penalty * scale_factor
+        
+        return loss
 
 
 def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, EIoU=False, eps=1e-7):

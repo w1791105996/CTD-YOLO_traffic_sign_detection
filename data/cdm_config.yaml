@@ -1,0 +1,65 @@
+# CDM (Classification Denoising Module) Configuration
+# Configuration parameters for CDM module
+
+# Challenge Classifier configuration
+classifier:
+  input_size: 224  # Input image size
+  num_classes: 5   # Number of classes: rain, snow, fog, blur, normal
+  dropout: 0.2     # Dropout rate
+  
+# Training configuration
+training:
+  batch_size: 32
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 1e-4
+  
+  # Learning rate scheduler configuration
+  scheduler:
+    type: "ReduceLROnPlateau"
+    mode: "max"
+    factor: 0.5
+    patience: 3
+    min_lr: 1e-6
+    
+  # Data augmentation configuration
+  augmentation:
+    horizontal_flip: 0.5
+    rotation: 10
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+      hue: 0.1
+    
+  # Normalization parameters
+  normalize:
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+
+# Denoising module configuration
+denoising:
+  # Rain denoising parameters
+  rain:
+    residual_weight: 0.3  # Residual connection weight
+    
+  # Snow denoising parameters
+  snow:
+    residual_weight: 0.4
+    
+  # Fog denoising parameters
+  fog:
+    residual_weight: 0.5
+    
+  # Blur denoising parameters
+  blur:
+    residual_weight: 0.6
+
+# Class mapping
+class_names: ['rain', 'snow', 'fog', 'blur', 'normal']
+
+# Dataset path configuration
+dataset:
+  train: "data/challenge_classification/train"
+  val: "data/challenge_classification/val"
+  test: "data/challenge_classification/test"

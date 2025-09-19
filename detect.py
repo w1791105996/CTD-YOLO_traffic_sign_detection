@@ -51,6 +51,8 @@ def run(weights='runs/train/exp/weights/best.pt',
         half=False,
         dnn=False,
         vid_stride=1,
+        use_cdm=False,
+        cdm_weights='',
         ):
     """
     Run inference with CTD-YOLO model
@@ -70,7 +72,16 @@ def run(weights='runs/train/exp/weights/best.pt',
 
     # Load model
     device = select_device(device)
-    model = CTD_YOLO(weights, device=device, dnn=dnn, data=data, fp16=half)
+    model = CTD_YOLO(weights, device=device, dnn=dnn, data=data, fp16=half, use_cdm=use_cdm)
+    
+    # Load CDM pretrained weights
+    if use_cdm and cdm_weights and Path(cdm_weights).exists():
+        print(f'Loading CDM weights from {cdm_weights}')
+        cdm_ckpt = torch.load(cdm_weights, map_location='cpu')
+        if hasattr(model, 'cdm'):
+            model.cdm.load_state_dict(cdm_ckpt['model_state_dict'], strict=False)
+            print('CDM weights loaded successfully')
+    
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
@@ -220,6 +231,8 @@ def parse_opt():
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
+    parser.add_argument('--use-cdm', action='store_true', help='use CDM preprocessing')
+    parser.add_argument('--cdm-weights', type=str, default='', help='CDM pretrained weights path')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))

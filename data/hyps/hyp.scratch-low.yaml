@@ -1,10 +1,10 @@
 # CTD-YOLO hyperparameters for training from scratch
-# python train.py --batch 64 --cfg ctd_yolo_config.yaml --weights '' --data ce-cctsdb.yaml --img 640 --epochs 100
-# See https://github.com/ultralytics/yolov5/issues/607 for evolve.py hyperparameter evolution results
+# python train.py --batch 32 --cfg ctd_yolo_config.yaml --weights '' --data ce-cctsdb.yaml --img 512 --epochs 200 --optimizer Adam
+# Optimized for high-resolution traffic sign detection with computational efficiency
 
-lr0: 0.01  # initial learning rate (SGD=1E-2, Adam=1E-3)
-lrf: 0.01  # final OneCycleLR learning rate (lr0 * lrf)
-momentum: 0.937  # SGD momentum/Adam beta1
+lr0: 0.001  # initial learning rate (Adam=1E-3)
+lrf: 0.1  # final learning rate factor for ReduceLROnPlateau
+momentum: 0.9  # Adam beta1
 weight_decay: 0.0005  # optimizer weight decay 5e-4
 warmup_epochs: 3.0  # warmup epochs (fractions ok)
 warmup_momentum: 0.8  # warmup initial momentum
@@ -18,24 +18,34 @@ iou_t: 0.20  # IoU training threshold
 anchor_t: 4.0  # anchor-multiple threshold
 # anchors: 3  # anchors per output layer (0 to ignore)
 fl_gamma: 0.0  # focal loss gamma (efficientDet default gamma=1.5)
-hsv_h: 0.015  # image HSV-Hue augmentation (fraction)
-hsv_s: 0.7  # image HSV-Saturation augmentation (fraction)
-hsv_v: 0.4  # image HSV-Value augmentation (fraction)
-degrees: 0.0  # image rotation (+/- deg)
-translate: 0.1  # image translation (+/- fraction)
-scale: 0.5  # image scale (+/- gain)
-shear: 0.0  # image shear (+/- deg)
-perspective: 0.0  # image perspective (+/- fraction), range 0-0.001
-flipud: 0.0  # image flip up-down (probability)
-fliplr: 0.5  # image flip left-right (probability)
-mosaic: 1.0  # image mosaic (probability)
-mixup: 0.0  # image mixup (probability)
-copy_paste: 0.0  # segment copy-paste (probability)
+# Enhanced data augmentation for traffic sign detection
+hsv_h: 0.02  # image HSV-Hue augmentation (increased for weather variations)
+hsv_s: 0.8  # image HSV-Saturation augmentation (enhanced for lighting conditions)
+hsv_v: 0.5  # image HSV-Value augmentation (improved for brightness variations)
+degrees: 5.0  # image rotation (+/- deg) - traffic signs can be slightly rotated
+translate: 0.15  # image translation (+/- fraction) - increased for position variations
+scale: 0.6  # image scale (+/- gain) - enhanced for size variations
+shear: 2.0  # image shear (+/- deg) - slight perspective changes
+perspective: 0.0002  # image perspective (+/- fraction) - subtle perspective changes
+flipud: 0.0  # image flip up-down (probability) - keep 0 for traffic signs
+fliplr: 0.3  # image flip left-right (probability) - reduced for directional signs
+mosaic: 0.8  # image mosaic (probability) - reduced for better small object detection
+mixup: 0.1  # image mixup (probability) - light mixing for robustness
+copy_paste: 0.05  # segment copy-paste (probability) - minimal for traffic signs
 
 # CTD-YOLO specific parameters
 wiou_loss: True  # use WIOU loss instead of standard IoU loss
+wiou_version: 3  # WIoU version (v3 with optimized parameters)
+wiou_alpha: 1.9  # WIoU v3 alpha parameter
+wiou_delta: 3  # WIoU v3 delta parameter
 maa_decay: 0.9999  # MAA decay rate
 maa_tau: 2000  # MAA tau parameter
 use_edcn: True  # use E-DCN in backbone
 edcn_groups: 4  # E-DCN groups
 label_smoothing: 0.0  # label smoothing epsilon
+
+# Training strategy parameters
+reduce_lr_patience: 3  # epochs to wait before reducing LR
+reduce_lr_factor: 0.5  # factor to reduce LR by
+min_lr: 1e-6  # minimum learning rate
+image_downsample: 512  # downsample high-res images to this size for efficiency
